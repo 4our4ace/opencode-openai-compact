@@ -87,6 +87,31 @@ function fetchInit(init: RequestInit | undefined, headers: Headers): RequestInit
   return init ? { ...init, headers } : { headers }
 }
 
+type RequestInitWithDuplex = RequestInit & { duplex?: "half" }
+
+function fetchInitForReroute(input: RequestInfo | URL, init: RequestInit | undefined, headers: Headers): RequestInit {
+  if (!(input instanceof Request)) return fetchInit(init, headers)
+
+  const requestInit: RequestInitWithDuplex = {
+    method: input.method,
+    body: input.body,
+    cache: input.cache,
+    credentials: input.credentials,
+    integrity: input.integrity,
+    keepalive: input.keepalive,
+    mode: input.mode,
+    redirect: input.redirect,
+    referrer: input.referrer,
+    referrerPolicy: input.referrerPolicy,
+    signal: input.signal,
+    ...init,
+    headers,
+  }
+  const duplex = (input as Request & { duplex?: "half" }).duplex
+  if (duplex && requestInit.body !== undefined && requestInit.body !== null) requestInit.duplex = duplex
+  return requestInit
+}
+
 function compactMarkers(headers: Headers, config: OpenAICompactConfig) {
   const sessionID = headers.get(config.headers.session) ?? undefined
   const shouldCompact = headers.get(config.headers.compact) === "1"
@@ -541,11 +566,11 @@ export function createCompactHooks(
   ): Promise<RequestInit> {
     const body = parseJsonRecord(await bodyText(requestInput, init))
     if (!body || !Array.isArray(body.input)) {
-      return fetchInit(init, headers)
+      return fetchInitForReroute(requestInput, init, headers)
     }
 
     const checkpoint = activeCheckpointByProvider.get(providerID)?.get(sessionID)
-    if (!checkpoint) return fetchInit(init, headers)
+    if (!checkpoint) return fetchInitForReroute(requestInput, init, headers)
 
     headers.set("content-type", "application/json")
     const instructionCount = leadingInstructionCount(body.input)
@@ -557,7 +582,7 @@ export function createCompactHooks(
         ...body.input.slice(instructionCount),
       ],
     }
-    return { ...init, headers, body: JSON.stringify(next) }
+    return { ...fetchInitForReroute(requestInput, init, headers), body: JSON.stringify(next) }
   }
 
   function wrapFetch(base: FetchLike, providerID: string, provider: ProviderConfig): FetchLike {
@@ -582,7 +607,7 @@ export function createCompactHooks(
 
       const requestInit = sessionID
         ? await initWithCompactedInput(providerID, requestInput, init, outboundHeaders, sessionID)
-        : fetchInit(init, outboundHeaders)
+        : fetchInitForReroute(requestInput, init, outboundHeaders)
       const openAIOAuthRequestInit = usesOpenAIOAuth(providerID, new Headers(requestInit.headers))
         ? await openAIOAuth.requestInit(requestInit)
         : undefined

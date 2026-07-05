@@ -423,6 +423,50 @@ describe("OpenAI OAuth hooks", () => {
     }
   })
 
+  test("preserves Request method and body when routing no-session OpenAI OAuth responses", async () => {
+    const store = CheckpointStore.openMemory()
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const fakeFetch = (async (requestInput: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(requestInput), init })
+      return new Response("ok")
+    }) as typeof fetch
+
+    try {
+      const hooks = createCompactHooks(defaultConfig, store, fakeFetch)
+      await hooks.auth?.loader?.(
+        async () => ({
+          type: "oauth",
+          refresh: "refresh-token",
+          access: "real-access-token",
+          expires: Date.now() + 60_000,
+          accountId: "acct_test",
+        }),
+        {} as any,
+      )
+      const cfg: any = {}
+      await hooks.config?.(cfg)
+      const wrappedFetch = cfg.provider.openai.options.fetch as typeof fetch
+      const body = { model: "gpt", input: [{ role: "user", content: "title request" }] }
+
+      await wrappedFetch(
+        new Request("https://api.openai.com/v1/responses", {
+          method: "POST",
+          headers: { authorization: `Bearer ${openAIOAuthDummyKey}` },
+          body: JSON.stringify(body),
+        }),
+      )
+
+      expect(calls[0]?.url).toBe("https://chatgpt.com/backend-api/codex/responses")
+      expect(calls[0]?.init?.method).toBe("POST")
+      expect(await new Response(calls[0]?.init?.body).json()).toEqual(body)
+      const headers = new Headers(calls[0]?.init?.headers)
+      expect(headers.get("authorization")).toBe("Bearer real-access-token")
+      expect(headers.get("chatgpt-account-id")).toBe("acct_test")
+    } finally {
+      store.close()
+    }
+  })
+
   test("keeps no-session API key responses on the original endpoint", async () => {
     const store = CheckpointStore.openMemory()
     const calls: Array<{ url: string; init?: RequestInit }> = []
