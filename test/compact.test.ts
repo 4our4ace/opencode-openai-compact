@@ -189,7 +189,20 @@ describe("OpenAI compact hooks", () => {
           utilityHeaders,
         )
         expect(utilityHeaders.headers).toEqual({})
+        await wrappedFetch("https://proxy.test/openai/v1/responses", {
+          method: "POST",
+          headers: utilityHeaders.headers,
+          body: JSON.stringify({
+            model: "gpt",
+            instructions: `${agent} instructions`,
+            input: [
+              { role: "developer", content: `${agent} developer prompt` },
+              { role: "user", content: `${agent} request` },
+            ],
+          }),
+        })
       }
+      calls.length = 0
 
       await hooks["experimental.chat.system.transform"]?.(
         { sessionID: "ses_rendered", model: { providerID: "openai" } } as any,

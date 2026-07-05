@@ -576,16 +576,18 @@ export function createCompactHooks(
       }
 
       const sessionID = headerSessionID
-      if (!sessionID) {
-        return baseFetch(requestInput, fetchInit(init, outboundHeaders))
-      }
-
-      const requestInit = await initWithCompactedInput(providerID, requestInput, init, outboundHeaders, sessionID)
+      const requestInit = sessionID
+        ? await initWithCompactedInput(providerID, requestInput, init, outboundHeaders, sessionID)
+        : fetchInit(init, outboundHeaders)
       const openAIOAuthRequestInit = usesOpenAIOAuth(providerID, new Headers(requestInit.headers))
         ? await openAIOAuth.requestInit(requestInit)
         : undefined
       const routedRequestInput = openAIOAuthRequestInit ? chatGPTCodexResponsesEndpoint : requestInput
       const routedRequestInit = openAIOAuthRequestInit ?? requestInit
+      if (!sessionID) {
+        return baseFetch(routedRequestInput, routedRequestInit)
+      }
+
       const body = parseJsonRecord(typeof routedRequestInit.body === "string" ? routedRequestInit.body : undefined)
       if (!shouldCompact) {
         rememberStableInstructions(providerID, sessionID, body)
