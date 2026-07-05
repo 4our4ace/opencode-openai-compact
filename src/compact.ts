@@ -576,6 +576,10 @@ export function createCompactHooks(
       }
 
       const sessionID = headerSessionID
+      if (shouldCompact && !sessionID) {
+        return new Response("OpenAI compact request is missing session header", { status: 400 })
+      }
+
       const requestInit = sessionID
         ? await initWithCompactedInput(providerID, requestInput, init, outboundHeaders, sessionID)
         : fetchInit(init, outboundHeaders)

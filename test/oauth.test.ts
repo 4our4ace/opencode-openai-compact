@@ -454,6 +454,56 @@ describe("OpenAI OAuth hooks", () => {
     }
   })
 
+  test("rejects compact requests missing session headers before OAuth routing", async () => {
+    const store = CheckpointStore.openMemory()
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const tokenCalls: Array<{ url: string; init?: RequestInit }> = []
+    const fakeFetch = (async (requestInput: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(requestInput), init })
+      return new Response("ok")
+    }) as typeof fetch
+    const tokenFetch = (async (requestInput: RequestInfo | URL, init?: RequestInit) => {
+      tokenCalls.push({ url: String(requestInput), init })
+      return new Response(JSON.stringify({ access_token: "refreshed-access-token", expires_in: 3600 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    }) as typeof fetch
+
+    try {
+      const hooks = createCompactHooks(defaultConfig, store, fakeFetch, { tokenFetch })
+      await hooks.auth?.loader?.(
+        async () => ({
+          type: "oauth",
+          refresh: "refresh-token",
+          access: "expired-access-token",
+          expires: Date.now() - 1,
+          accountId: "acct_test",
+        }),
+        {} as any,
+      )
+      const cfg: any = {}
+      await hooks.config?.(cfg)
+      const wrappedFetch = cfg.provider.openai.options.fetch as typeof fetch
+
+      const response = await wrappedFetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${openAIOAuthDummyKey}`,
+          [defaultConfig.headers.compact]: "1",
+        },
+        body: JSON.stringify({ model: "ignored", input: [{ role: "user", content: "compact without session" }] }),
+      })
+
+      expect(response.status).toBe(400)
+      expect(await response.text()).toBe("OpenAI compact request is missing session header")
+      expect(calls).toEqual([])
+      expect(tokenCalls).toEqual([])
+    } finally {
+      store.close()
+    }
+  })
+
   test("refreshes expired OpenAI OAuth token before routing responses", async () => {
     const store = CheckpointStore.openMemory()
     const calls: Array<{ url: string; init?: RequestInit }> = []
