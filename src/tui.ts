@@ -1,11 +1,5 @@
 import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 
-export const COMPACTION_TIMEOUT_MS = 30_000
-
-export type CompactionEvent =
-  | { type: "session.compacted"; properties: { sessionID: string } }
-  | { type: "session.error"; properties: { sessionID?: string } }
-
 export type SessionModelMessage = {
   role: "user" | "assistant"
   model?: {
@@ -43,62 +37,17 @@ export function resolveOpenAIModel(
   return { providerID, modelID }
 }
 
-export function compactionEventResult(
-  event: CompactionEvent,
-  sessionID: string,
-): "success" | "error" | undefined {
-  if (event.type === "session.compacted") {
-    return event.properties.sessionID === sessionID ? "success" : undefined
-  }
-  if (event.type === "session.error") {
-    return event.properties.sessionID === sessionID ? "error" : undefined
-  }
-  return undefined
-}
-
 const tui: TuiPlugin = async (api) => {
-  const monitors = new Map<string, () => void>()
+  const inFlight = new Set<string>()
 
-  const stop = (sessionID: string) => {
-    monitors.get(sessionID)?.()
-  }
-
-  const monitor = (sessionID: string) => {
-    if (monitors.has(sessionID)) return undefined
-
+  const start = (sessionID: string) => {
+    if (inFlight.has(sessionID)) return false
+    inFlight.add(sessionID)
     api.ui.toast({ message: "Compaction started", variant: "info" })
-    let finished = false
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const disposers = [
-      api.event.on("session.compacted", (event) => {
-        if (compactionEventResult(event, sessionID) !== "success") return
-        api.ui.toast({ message: "Compaction successful", variant: "success" })
-        cleanup()
-      }),
-      api.event.on("session.error", (event) => {
-        if (compactionEventResult(event, sessionID) !== "error") return
-        api.ui.toast({ message: "Compaction failed", variant: "error" })
-        cleanup()
-      }),
-    ]
-
-    const cleanup = () => {
-      if (finished) return
-      finished = true
-      if (timer) clearTimeout(timer)
-      for (const dispose of disposers) dispose()
-      if (monitors.get(sessionID) === cleanup) monitors.delete(sessionID)
-    }
-
-    monitors.set(sessionID, cleanup)
-    timer = setTimeout(() => {
-      api.ui.toast({ message: "Compaction timed out without success", variant: "warning" })
-      cleanup()
-    }, COMPACTION_TIMEOUT_MS)
-    return cleanup
+    return true
   }
 
-  api.keymap.registerLayer({
+  const keymapDisposer = api.keymap.registerLayer({
     priority: 1,
     commands: [
       {
@@ -115,6 +64,11 @@ const tui: TuiPlugin = async (api) => {
               : undefined
           if (!sessionID) {
             api.ui.toast({ message: "No active session to compact", variant: "warning" })
+            return
+          }
+
+          if (inFlight.has(sessionID)) {
+            api.ui.toast({ message: "Compaction already in progress for this session", variant: "warning" })
             return
           }
 
@@ -135,18 +89,24 @@ const tui: TuiPlugin = async (api) => {
             return
           }
 
-          const cleanup = monitor(sessionID)
+          if (!start(sessionID)) return
           try {
-            await api.client.session.summarize(
+            const result = await api.client.session.summarize(
               { sessionID, providerID: model.providerID, modelID: model.modelID, auto: false },
               { throwOnError: true },
             )
+            if (result.data === true) {
+              api.ui.toast({ message: "Compaction successful", variant: "success" })
+              return
+            }
+            api.ui.toast({ message: "Compaction failed", variant: "error" })
           } catch (error) {
-            cleanup?.()
             api.ui.toast({
               message: error instanceof Error ? `Compaction failed: ${error.message}` : "Compaction failed",
               variant: "error",
             })
+          } finally {
+            inFlight.delete(sessionID)
           }
         },
       },
@@ -154,7 +114,8 @@ const tui: TuiPlugin = async (api) => {
   })
 
   api.lifecycle.onDispose(() => {
-    for (const sessionID of monitors.keys()) stop(sessionID)
+    if (typeof keymapDisposer === "function") keymapDisposer()
+    inFlight.clear()
   })
 }
 
