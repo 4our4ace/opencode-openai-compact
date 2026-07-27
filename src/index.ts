@@ -19,7 +19,7 @@ export const server: Plugin = async ({ client, directory, worktree }) => {
 }
 
 export default {
-  id: "opencode-openai-compact",
+  id: "4our4ace-opencode-openai-compact",
   server,
 }
 

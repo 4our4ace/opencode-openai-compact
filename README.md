@@ -1,7 +1,7 @@
 # OpenAI Native Compaction for OpenCode
 
-[![npm version](https://img.shields.io/npm/v/opencode-openai-compact?style=flat-square)](https://www.npmjs.com/package/opencode-openai-compact)
-[![GitHub stars](https://img.shields.io/github/stars/partment/opencode-openai-compact?style=flat-square)](https://github.com/partment/opencode-openai-compact/stargazers)
+[![npm version](https://img.shields.io/npm/v/%404our4ace%2Fopencode-openai-compact?style=flat-square)](https://www.npmjs.com/package/%404our4ace%2Fopencode-openai-compact)
+[![GitHub stars](https://img.shields.io/github/stars/4our4ace/opencode-openai-compact?style=flat-square)](https://github.com/4our4ace/opencode-openai-compact/stargazers)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 Use OpenAI's official Responses API `/responses/compact` in OpenCode.
@@ -27,6 +27,16 @@ The important part is simple: `/responses/compact` returns compacted output that
 4. Stores the compacted output in a local SQLite checkpoint.
 5. Injects that checkpoint into the next `/responses` request for the same session.
 
+## Native `/compact` behavior
+
+The package also exports a TUI plugin at
+`@4our4ace/opencode-openai-compact/tui`. When installed as a TUI plugin, the
+normal `/compact`, `/summarize`, command palette entry, and `Ctrl+X,C` controls
+retain the normal `session.compact` spelling and model selection. The fork-owned
+handler calls OpenCode's legacy session summarize API for the current OpenAI
+model, then reports `Compaction started`, success, errors, or a bounded timeout
+while the request is active in the TUI.
+
 ## When To Use It
 
 Use this if:
@@ -48,7 +58,7 @@ Add the npm package to your OpenCode config.
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-openai-compact"]
+  "plugin": ["@4our4ace/opencode-openai-compact"]
 }
 ```
 
@@ -66,7 +76,7 @@ Requirements:
 | Runtime | Version |
 | --- | --- |
 | Node.js | `>=22.12.0` |
-| OpenCode | `>=1.3.8` |
+| OpenCode | `>=1.18.4 <2` |
 
 ## Configuration Files
 
@@ -102,7 +112,7 @@ The default retention is 30 days. Checkpoints are deleted when OpenCode emits `s
 
 ```jsonc
 {
-  "$schema": "https://raw.githubusercontent.com/partment/opencode-openai-compact/main/configSchema.json",
+  "$schema": "https://raw.githubusercontent.com/4our4ace/opencode-openai-compact/main/configSchema.json",
   "enabled": true,
   "providers": {
     "openai": {
@@ -175,11 +185,11 @@ The default retention is 30 days. Checkpoints are deleted when OpenCode emits `s
 ## Star Us On GitHub
 
 <p align="center">
-  <a href="https://www.star-history.com/#partment/opencode-openai-compact&type=date&legend=bottom-right">
+  <a href="https://www.star-history.com/#4our4ace/opencode-openai-compact&type=date&legend=bottom-right">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=partment%2Fopencode-openai-compact&type=date&theme=dark&legend=bottom-right&sealed_token=b_3TR5-_wZLR4jqnK5zrIwbY_0TZKLLuNEi7PJ5KQDcCTy3UvdjrNUxLybd-4n9ekuAu7y1dfEvmXgzdrUGVKYe8ycn4L4lOEbuaupbR8M1mofa2cD7Gx2t9Taj9ZV3dW0dp0WE16xGp_E3p26a2EvpDcAbiYu4Ky1gZy9C8GrOHjSoY2m2Gv495wA7W" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=partment%2Fopencode-openai-compact&type=date&legend=bottom-right&sealed_token=b_3TR5-_wZLR4jqnK5zrIwbY_0TZKLLuNEi7PJ5KQDcCTy3UvdjrNUxLybd-4n9ekuAu7y1dfEvmXgzdrUGVKYe8ycn4L4lOEbuaupbR8M1mofa2cD7Gx2t9Taj9ZV3dW0dp0WE16xGp_E3p26a2EvpDcAbiYu4Ky1gZy9C8GrOHjSoY2m2Gv495wA7W" />
-      <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=partment%2Fopencode-openai-compact&type=date&legend=bottom-right&sealed_token=b_3TR5-_wZLR4jqnK5zrIwbY_0TZKLLuNEi7PJ5KQDcCTy3UvdjrNUxLybd-4n9ekuAu7y1dfEvmXgzdrUGVKYe8ycn4L4lOEbuaupbR8M1mofa2cD7Gx2t9Taj9ZV3dW0dp0WE16xGp_E3p26a2EvpDcAbiYu4Ky1gZy9C8GrOHjSoY2m2Gv495wA7W" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=4our4ace%2Fopencode-openai-compact&type=date&theme=dark&legend=bottom-right" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=4our4ace%2Fopencode-openai-compact&type=date&legend=bottom-right" />
+      <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=4our4ace%2Fopencode-openai-compact&type=date&legend=bottom-right" />
     </picture>
   </a>
 </p>
