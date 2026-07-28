@@ -18,16 +18,16 @@ readonly TUI_CONFIG_FILE="${OPENCODE_TUI_CONFIG:-$OPENCODE_DIR/tui.json}"
 
 command -v python3 >/dev/null || { printf 'Error: python3 is required.\n' >&2; exit 1; }
 
-CONFIG_FILE="$CONFIG_FILE" TUI_CONFIG_FILE="$TUI_CONFIG_FILE" PLUGIN_DIR="$PLUGIN_DIR" python3 - <<'PY'
+OPENCODE_CONFIG_FILE="$CONFIG_FILE" OPENCODE_TUI_CONFIG_FILE="$TUI_CONFIG_FILE" OPENCODE_PLUGIN_DIR="$PLUGIN_DIR" python3 - <<'PY'
 import json
 import os
 import shutil
 import tempfile
 from datetime import datetime, timezone
 
-config_file = os.environ["CONFIG_FILE"]
-tui_config_file = os.environ["TUI_CONFIG_FILE"]
-plugin_dir = os.environ["PLUGIN_DIR"]
+config_file = os.environ["OPENCODE_CONFIG_FILE"]
+tui_config_file = os.environ["OPENCODE_TUI_CONFIG_FILE"]
+plugin_dir = os.environ["OPENCODE_PLUGIN_DIR"]
 entries_by_file = {
     config_file: {f"file://{plugin_dir}"},
     tui_config_file: {f"file://{plugin_dir}/dist/tui.js"},

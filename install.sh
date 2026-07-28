@@ -60,16 +60,16 @@ else
   exit 1
 fi
 
-CONFIG_FILE="$CONFIG_FILE" TUI_CONFIG_FILE="$TUI_CONFIG_FILE" PLUGIN_DIR="$PLUGIN_DIR" python3 - <<'PY'
+OPENCODE_CONFIG_FILE="$CONFIG_FILE" OPENCODE_TUI_CONFIG_FILE="$TUI_CONFIG_FILE" OPENCODE_PLUGIN_DIR="$PLUGIN_DIR" python3 - <<'PY'
 import json
 import os
 import shutil
 import tempfile
 from datetime import datetime, timezone
 
-config_file = os.environ["CONFIG_FILE"]
-tui_config_file = os.environ["TUI_CONFIG_FILE"]
-plugin_dir = os.environ["PLUGIN_DIR"]
+config_file = os.environ["OPENCODE_CONFIG_FILE"]
+tui_config_file = os.environ["OPENCODE_TUI_CONFIG_FILE"]
+plugin_dir = os.environ["OPENCODE_PLUGIN_DIR"]
 server = f"file://{plugin_dir}"
 tui = f"file://{plugin_dir}/dist/tui.js"
 
