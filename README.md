@@ -8,18 +8,18 @@ Use OpenAI's official Responses API `/responses/compact` in OpenCode.
 
 OpenCode can compact long coding sessions. When you are using OpenAI Responses models, this plugin routes compaction through OpenAI's native compact endpoint instead of asking another model to write a text summary.
 
-## Install both plugins
+## Standalone install
 
-For normal users, install both plugins with one command. It clones, builds, and configures them in the correct order: multi-auth first, then compact.
+Install compact by itself with one command. This clones the plugin, installs production dependencies, and configures both its server and TUI plugins:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/4our4ace/opencode-openai-multi-auth/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/4our4ace/opencode-openai-compact/main/install.sh | bash
 ```
 
-To remove both managed plugins:
+To uninstall compact:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/4our4ace/opencode-openai-multi-auth/main/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/4our4ace/opencode-openai-compact/main/uninstall.sh | bash
 ```
 
 ## Why Native Compaction
@@ -76,22 +76,6 @@ add its file URL to your OpenCode config:
   "plugin": ["file:///path/to/opencode-openai-compact"]
 }
 ```
-
-When using a local checkout of `4our4ace/opencode-openai-multi-auth`,
-configure both plugins in this order:
-
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": [
-    "file:///path/to/opencode-openai-multi-auth/dist/index.js",
-    "file:///path/to/opencode-openai-compact"
-  ]
-}
-```
-
-In combined mode, multi-auth owns authentication and OAuth handling; compact
-supplies the compaction middleware.
 
 Requirements:
 
