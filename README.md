@@ -8,6 +8,20 @@ Use OpenAI's official Responses API `/responses/compact` in OpenCode.
 
 OpenCode can compact long coding sessions. When you are using OpenAI Responses models, this plugin routes compaction through OpenAI's native compact endpoint instead of asking another model to write a text summary.
 
+## Install both plugins
+
+For normal users, install both plugins with one command. It clones, builds, and configures them in the correct order: multi-auth first, then compact.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/4our4ace/opencode-openai-multi-auth/main/install.sh | bash
+```
+
+To remove both managed plugins:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/4our4ace/opencode-openai-multi-auth/main/uninstall.sh | bash
+```
+
 ## Why Native Compaction
 
 | Default prompt summary | OpenAI native compaction |
@@ -53,7 +67,7 @@ Skip it if:
 
 ## Install
 
-Compact works standalone with OpenCode's built-in OAuth. For a local checkout,
+Compact also works standalone with OpenCode's built-in OAuth. For a local checkout,
 add its file URL to your OpenCode config:
 
 ```jsonc
