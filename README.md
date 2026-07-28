@@ -53,16 +53,8 @@ Skip it if:
 
 ## Install
 
-Add the npm package to your OpenCode config.
-
-```jsonc
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@4our4ace/opencode-openai-compact"]
-}
-```
-
-For a local checkout during development, use a file URL.
+Compact works standalone with OpenCode's built-in OAuth. For a local checkout,
+add its file URL to your OpenCode config:
 
 ```jsonc
 {
@@ -70,6 +62,22 @@ For a local checkout during development, use a file URL.
   "plugin": ["file:///path/to/opencode-openai-compact"]
 }
 ```
+
+When using a local checkout of `4our4ace/opencode-openai-multi-auth`,
+configure both plugins in this order:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "file:///path/to/opencode-openai-multi-auth/dist/index.js",
+    "file:///path/to/opencode-openai-compact"
+  ]
+}
+```
+
+In combined mode, multi-auth owns authentication and OAuth handling; compact
+supplies the compaction middleware.
 
 Requirements:
 

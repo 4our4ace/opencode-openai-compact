@@ -1,5 +1,6 @@
 import type { Hooks } from "@opencode-ai/plugin"
 import { defaultConfig, type OpenAICompactConfig } from "./schema.js"
+import { CheckpointStore, type AnyRecord, type Checkpoint } from "./state.js"
 import {
   asOpenAIOAuth,
   createOpenAIOAuth,
@@ -9,7 +10,6 @@ import {
   type OpenAIOAuthAuth,
   type OAuthFetchLike,
 } from "./oauth.js"
-import { CheckpointStore, type AnyRecord, type Checkpoint } from "./state.js"
 
 type FetchLike = typeof fetch
 type MessageEntry = {
@@ -20,6 +20,14 @@ type MessageBoundary = { messageID: string; createdAt: number }
 type PendingCompactResult = { providerID: string; responseID: string; items: AnyRecord[] }
 type ProviderConfig = OpenAICompactConfig["providers"][string]
 type StableInstructions = { instructions?: unknown; inputPrefix: unknown[] }
+export type FetchMiddleware = (next: FetchLike) => FetchLike
+export type FetchMiddlewareProtocol = {
+  version: 1
+  attach?: (middleware: FetchMiddleware) => void
+  middleware?: FetchMiddleware
+  base?: FetchLike
+}
+
 type CompactHookOptions = {
   setOpenAIAuth?: (auth: OpenAIOAuthAuth) => Promise<void>
   tokenFetch?: OAuthFetchLike
@@ -27,6 +35,8 @@ type CompactHookOptions = {
 
 const wrappedFetch = "__opencodeOpenAICompactFetch"
 const wrappedBaseFetch = "__opencodeOpenAICompactBaseFetch"
+export const fetchMiddlewareSymbol = Symbol.for("@4our4ace/opencode-openai-compact/fetch-middleware")
+const multiAuthActiveSymbol = Symbol.for("@4our4ace/opencode-openai-multi-auth/active")
 const chatGPTCodexResponsesEndpoint = "https://chatgpt.com/backend-api/codex/responses"
 const chatGPTCodexCompactEndpoint = "https://chatgpt.com/backend-api/codex/responses/compact"
 const openCodeCompactionDeveloperPrompt = "You are an anchored context summarization assistant for coding sessions."
@@ -408,13 +418,13 @@ export function createCompactHooks(
   const stableInstructionsByProvider = new Map<string, Map<string, StableInstructions>>()
   const pendingSystemByProvider = new Map<string, Map<string, string>>()
   const providerByMessage = new Map<string, string>()
+  const multiAuthActive = Boolean((globalThis as Record<PropertyKey, unknown>)[multiAuthActiveSymbol])
   let getOpenAIAuth: (() => Promise<OpenAIOAuthAuth | undefined>) | undefined
   const openAIOAuth = createOpenAIOAuth({
     getAuth: async () => getOpenAIAuth?.(),
     setAuth: options.setOpenAIAuth,
     tokenFetch: options.tokenFetch,
   })
-
   function rememberMessageProvider(input: unknown, output: unknown) {
     const providerID = getProviderID(input)
     if (!providerID || !configuredProviders.has(providerID)) return
@@ -587,7 +597,7 @@ export function createCompactHooks(
 
   function wrapFetch(base: FetchLike, providerID: string, provider: ProviderConfig): FetchLike {
     const previousBase = (base as unknown as AnyRecord)[wrappedBaseFetch]
-    const baseFetch = typeof previousBase === "function" ? (previousBase as FetchLike) : base
+    let baseFetch = typeof previousBase === "function" ? (previousBase as FetchLike) : base
 
     const wrapped = (async (requestInput: RequestInfo | URL, init?: RequestInit) => {
       const url = urlOf(requestInput)
@@ -608,11 +618,14 @@ export function createCompactHooks(
       const requestInit = sessionID
         ? await initWithCompactedInput(providerID, requestInput, init, outboundHeaders, sessionID)
         : fetchInitForReroute(requestInput, init, outboundHeaders)
-      const openAIOAuthRequestInit = usesOpenAIOAuth(providerID, new Headers(requestInit.headers))
-        ? await openAIOAuth.requestInit(requestInit)
-        : undefined
-      const routedRequestInput = openAIOAuthRequestInit ? chatGPTCodexResponsesEndpoint : requestInput
-      const routedRequestInit = openAIOAuthRequestInit ?? requestInit
+      const oauthRequest = !multiAuthActive && providerID === "openai" && usesOpenAIOAuth(providerID, headers)
+      const oauthRequestInit = oauthRequest ? await openAIOAuth.requestInit(requestInit) : undefined
+      const routedRequestInput = oauthRequest
+        ? shouldCompact
+          ? chatGPTCodexCompactEndpoint
+          : chatGPTCodexResponsesEndpoint
+        : requestInput
+      const routedRequestInit = oauthRequestInit ?? requestInit
       if (!sessionID) {
         return baseFetch(routedRequestInput, routedRequestInit)
       }
@@ -629,7 +642,7 @@ export function createCompactHooks(
 
       const outboundCompactHeaders = new Headers(routedRequestInit.headers)
       outboundCompactHeaders.set("content-type", "application/json")
-      const compacted = await baseFetch(openAIOAuthRequestInit ? chatGPTCodexCompactEndpoint : compactUrl(url, config), {
+      const compacted = await baseFetch(oauthRequest ? chatGPTCodexCompactEndpoint : compactUrl(url, config), {
         ...routedRequestInit,
         method: "POST",
         headers: outboundCompactHeaders,
@@ -672,6 +685,16 @@ export function createCompactHooks(
 
     Object.defineProperty(wrapped, wrappedFetch, { value: true })
     Object.defineProperty(wrapped, wrappedBaseFetch, { value: baseFetch })
+    Object.defineProperty(wrapped, fetchMiddlewareSymbol, {
+      value: {
+        version: 1,
+        base: baseFetch,
+        middleware: (next: FetchLike) => wrapFetch(next, providerID, provider),
+        attach(middleware: FetchMiddleware) {
+          baseFetch = middleware(baseFetch)
+        },
+      } satisfies FetchMiddlewareProtocol,
+    })
     return wrapped
   }
 
@@ -701,19 +724,6 @@ export function createCompactHooks(
   }
 
   const hooks: Hooks = {
-    auth: {
-      provider: "openai",
-      methods: openAIAuthMethods,
-      async loader(getAuth) {
-        getOpenAIAuth = async () => asOpenAIOAuth(await getAuth())
-        const auth = await getAuth()
-        const apiAuth = asRecord(auth)
-        if (asOpenAIOAuth(auth)) return { apiKey: openAIOAuthDummyKey }
-        if (apiAuth?.type === "api" && typeof apiAuth.key === "string") return { apiKey: apiAuth.key }
-        return {}
-      },
-    },
-
     async dispose() {
       store.close()
     },
@@ -727,7 +737,21 @@ export function createCompactHooks(
         const provider = providers[providerID] as AnyRecord
         provider.options ??= {}
         const options = provider.options as AnyRecord
-        options.fetch = wrapFetch((options.fetch as FetchLike | undefined) ?? baseFetch, providerID, compactProvider)
+        const currentFetch = (options.fetch as FetchLike | undefined) ?? baseFetch
+        const protocol = (currentFetch as unknown as Record<PropertyKey, unknown>)[fetchMiddlewareSymbol]
+        const isOurWrappedFetch = Boolean((currentFetch as unknown as AnyRecord)[wrappedFetch])
+        if (
+          protocol &&
+          typeof protocol === "object" &&
+          (protocol as { version?: unknown }).version === 1 &&
+          typeof (protocol as { attach?: unknown }).attach === "function" &&
+          (multiAuthActive || !isOurWrappedFetch)
+        ) {
+          const attach = (protocol as FetchMiddlewareProtocol).attach!
+          attach((next) => wrapFetch(next, providerID, compactProvider))
+        } else if (!multiAuthActive) {
+          options.fetch = wrapFetch(currentFetch, providerID, compactProvider)
+        }
       }
     },
 
@@ -773,6 +797,21 @@ export function createCompactHooks(
       if (typeof input.sessionID !== "string") return
       rememberPendingSystem(providerID, input.sessionID, output.system)
     },
+  }
+
+  if (!multiAuthActive) {
+    hooks.auth = {
+      provider: "openai",
+      methods: openAIAuthMethods,
+      async loader(getAuth) {
+        getOpenAIAuth = async () => asOpenAIOAuth(await getAuth())
+        const auth = await getAuth()
+        const apiAuth = asRecord(auth)
+        if (asOpenAIOAuth(auth)) return { apiKey: openAIOAuthDummyKey }
+        if (apiAuth?.type === "api" && typeof apiAuth.key === "string") return { apiKey: apiAuth.key }
+        return {}
+      },
+    }
   }
 
   return hooks

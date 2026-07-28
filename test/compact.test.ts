@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { compactBody, compactUrl, createCompactHooks } from "../src/compact.js"
+import { compactBody, compactUrl, createCompactHooks, fetchMiddlewareSymbol } from "../src/compact.js"
 import { defaultConfig, OpenAICompactConfigSchema } from "../src/schema.js"
 import { CheckpointStore } from "../src/state.js"
 
@@ -18,9 +18,94 @@ describe("OpenAI compact hooks", () => {
 
       await hooks.config?.(cfg)
 
-      expect(typeof cfg.provider.openai.options.fetch).toBe("function")
+      const wrappedFetch = cfg.provider.openai.options.fetch as typeof fetch
+      expect(typeof wrappedFetch).toBe("function")
+      expect((wrappedFetch as any)[fetchMiddlewareSymbol].version).toBe(1)
     } finally {
       store.close()
+    }
+  })
+
+  test("attaches through a compatible final fetch consumer", async () => {
+    const store = CheckpointStore.openMemory()
+    const calls: string[] = []
+    const baseFetch = (async (input: RequestInfo | URL) => {
+      calls.push(String(input))
+      return new Response("ok")
+    }) as typeof fetch
+    let finalFetch = baseFetch
+    const consumerFetch = ((input: RequestInfo | URL, init?: RequestInit) => finalFetch(input, init)) as typeof fetch
+    Object.defineProperty(consumerFetch, fetchMiddlewareSymbol, {
+      value: {
+        version: 1,
+        attach(middleware: (next: typeof fetch) => typeof fetch) {
+          finalFetch = middleware(finalFetch)
+        },
+      },
+    })
+
+    try {
+      const hooks = createCompactHooks(defaultConfig, store)
+      const cfg: any = { provider: { openai: { options: { fetch: consumerFetch } } } }
+      await hooks.config?.(cfg)
+
+      await finalFetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          [defaultConfig.headers.compact]: "1",
+          [defaultConfig.headers.session]: "ses_consumer",
+        },
+        body: JSON.stringify({ model: "gpt", input: [{ role: "user", content: "hello" }] }),
+      })
+      expect(calls[0]).toBe("https://api.openai.com/v1/responses/compact")
+      expect(cfg.provider.openai.options.fetch).toBe(consumerFetch)
+    } finally {
+      store.close()
+    }
+  })
+
+  test("leaves auth and transport to multi-auth while retaining compaction", async () => {
+    const marker = Symbol.for("@4our4ace/opencode-openai-multi-auth/active")
+    const previous = (globalThis as any)[marker]
+    ;(globalThis as any)[marker] = true
+    const store = CheckpointStore.openMemory()
+    const calls: string[] = []
+    const fakeFetch = (async (input: RequestInfo | URL) => {
+      calls.push(String(input))
+      return new Response(JSON.stringify({ id: "resp", output: [{ type: "compaction_summary", encrypted_content: "x" }] }), {
+        headers: { "content-type": "application/json" },
+      })
+    }) as typeof fetch
+    let finalFetch = fakeFetch
+    const consumerFetch = ((input: RequestInfo | URL, init?: RequestInit) => finalFetch(input, init)) as typeof fetch
+    Object.defineProperty(consumerFetch, fetchMiddlewareSymbol, {
+      value: {
+        version: 1,
+        attach(middleware: (next: typeof fetch) => typeof fetch) {
+          finalFetch = middleware(finalFetch)
+        },
+      },
+    })
+
+    try {
+      const hooks = createCompactHooks(defaultConfig, store, fakeFetch)
+      expect(hooks.auth).toBeUndefined()
+      const cfg: any = { provider: { openai: { options: { fetch: consumerFetch } } } }
+      await hooks.config?.(cfg)
+      await finalFetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer chatgpt-oauth",
+          [defaultConfig.headers.compact]: "1",
+          [defaultConfig.headers.session]: "ses_multi",
+        },
+        body: JSON.stringify({ model: "gpt-5.6", input: [] }),
+      })
+      expect(calls[0]).toBe("https://api.openai.com/v1/responses/compact")
+    } finally {
+      store.close()
+      if (previous === undefined) delete (globalThis as any)[marker]
+      else (globalThis as any)[marker] = previous
     }
   })
 

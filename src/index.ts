@@ -23,6 +23,7 @@ export default {
   server,
 }
 
-export { createCompactHooks, loadConfig }
+export { createCompactHooks, fetchMiddlewareSymbol } from "./compact.js"
+export { loadConfig } from "./config.js"
 export { CheckpointStore, currentSchemaVersion, type Checkpoint } from "./state.js"
 export type { OpenAICompactConfig } from "./schema.js"
