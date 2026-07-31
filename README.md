@@ -47,10 +47,11 @@ The package also exports a TUI plugin at
 `@4our4ace/opencode-openai-compact/tui`. When installed as a TUI plugin, the
 normal `/compact`, `/summarize`, command palette entry, and `Ctrl+X,C` controls
 retain the normal `session.compact` spelling and model selection. The fork-owned
-handler calls OpenCode's legacy session summarize API with an available OpenAI
-model, then reports `Compaction started`, success, or failure after that request
-settles. This works even when the session's previous messages used another
-provider. Only one compaction request is allowed per session at a time.
+handler calls OpenCode's legacy session summarize API with the session's last
+submitted model, then reports `Compaction started`, success, or failure after
+that request settles. OpenAI requests are handled by native compaction; other
+providers use OpenCode's normal prompt-summary compaction. Only one compaction
+request is allowed per session at a time.
 
 ## When To Use It
 

@@ -1,23 +1,13 @@
 import { describe, expect, test } from "vitest"
-import { resolveOpenAIModel, tui } from "../src/tui.js"
-
-describe("TUI compaction model selection", () => {
-  test("uses an available OpenAI model independently of session history", () => {
-    expect(resolveOpenAIModel([{ id: "openai", models: { current: {} } }])).toEqual({
-      providerID: "openai",
-      modelID: "current",
-    })
-    expect(resolveOpenAIModel([{ id: "anthropic", models: { current: {} } }])).toBeUndefined()
-    expect(resolveOpenAIModel([{ id: "openai", models: {} }])).toBeUndefined()
-  })
-})
+import { tui } from "../src/tui.js"
 
 describe("TUI compaction request", () => {
   const createHarness = (
     summarize: (input: { sessionID: string; providerID: string; modelID: string; auto: boolean }) => Promise<{ data: boolean }>,
-    messageModel = { providerID: "anthropic", modelID: "stale-model" },
+    model: { providerID: string; id: string } | null = { providerID: "openai", id: "gpt" },
   ) => {
     const toasts: Array<{ message: string; variant?: string }> = []
+    const requestedSessionIDs: string[] = []
     let command: { run: () => Promise<void> } | undefined
     let disposed = false
     let dispose!: () => void
@@ -35,9 +25,11 @@ describe("TUI compaction request", () => {
       route: { current: { name: "session", params: { sessionID: "session" } } },
       state: {
         session: {
-          messages: () => [{ role: "user", model: messageModel }],
+          get: (sessionID) => {
+            requestedSessionIDs.push(sessionID)
+            return { model }
+          },
         },
-        provider: [{ id: "openai", models: { gpt: {} } }],
       },
       client: { session: { summarize } },
       lifecycle: {
@@ -51,6 +43,7 @@ describe("TUI compaction request", () => {
     return {
       command: command!,
       toasts,
+      requestedSessionIDs,
       dispose,
       wasDisposed: () => disposed,
     }
@@ -65,6 +58,7 @@ describe("TUI compaction request", () => {
 
     await harness.command.run()
 
+    expect(harness.requestedSessionIDs).toEqual(["session"])
     expect(requests).toEqual([{ sessionID: "session", providerID: "openai", modelID: "gpt", auto: false }])
     expect(harness.toasts.at(-1)).toEqual({ message: "Compaction successful", variant: "success" })
   })
@@ -113,15 +107,23 @@ describe("TUI compaction request", () => {
     expect(harness.wasDisposed()).toBe(true)
   })
 
-  test("uses OpenAI even when session history belongs to another provider", async () => {
+  test("uses the session's last requested non-OpenAI model for default compaction", async () => {
     const requests: Array<{ sessionID: string; providerID: string; modelID: string; auto: boolean }> = []
     const harness = createHarness(async (input) => {
       requests.push(input)
       return { data: true }
-    })
+    }, { providerID: "xai", id: "grok" })
 
     await harness.command.run()
 
-    expect(requests).toEqual([{ sessionID: "session", providerID: "openai", modelID: "gpt", auto: false }])
+    expect(requests).toEqual([{ sessionID: "session", providerID: "xai", modelID: "grok", auto: false }])
+  })
+
+  test("does not compact when the session has no submitted model", async () => {
+    const harness = createHarness(async () => ({ data: true }), null)
+
+    await harness.command.run()
+
+    expect(harness.toasts.at(-1)).toEqual({ message: "No model found for this session", variant: "warning" })
   })
 })

@@ -1,10 +1,3 @@
-export function resolveOpenAIModel(providers) {
-    const provider = providers.find((item) => item.id === "openai");
-    if (!provider)
-        return undefined;
-    const modelID = Object.keys(provider.models)[0];
-    return modelID ? { providerID: provider.id, modelID } : undefined;
-}
 const tui = async (api) => {
     const inFlight = new Set();
     const start = (sessionID) => {
@@ -36,15 +29,15 @@ const tui = async (api) => {
                         api.ui.toast({ message: "Compaction already in progress for this session", variant: "warning" });
                         return;
                     }
-                    const model = resolveOpenAIModel(api.state.provider);
+                    const model = api.state.session.get(sessionID)?.model;
                     if (!model) {
-                        api.ui.toast({ message: "No usable OpenAI model found for this session", variant: "warning" });
+                        api.ui.toast({ message: "No model found for this session", variant: "warning" });
                         return;
                     }
                     if (!start(sessionID))
                         return;
                     try {
-                        const result = await api.client.session.summarize({ sessionID, providerID: model.providerID, modelID: model.modelID, auto: false }, { throwOnError: true });
+                        const result = await api.client.session.summarize({ sessionID, providerID: model.providerID, modelID: model.id, auto: false }, { throwOnError: true });
                         if (result.data === true) {
                             api.ui.toast({ message: "Compaction successful", variant: "success" });
                             return;
