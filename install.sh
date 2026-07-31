@@ -42,10 +42,6 @@ else
     printf 'Error: %s has unexpected origin %s.\n' "$PLUGIN_DIR" "${remote:-<none>}" >&2
     exit 1
   fi
-  if [[ -n "$(git -C "$PLUGIN_DIR" status --porcelain)" ]]; then
-    printf 'Error: %s has local changes; refusing to update it.\n' "$PLUGIN_DIR" >&2
-    exit 1
-  fi
   git -C "$PLUGIN_DIR" pull --ff-only --quiet
 fi
 
