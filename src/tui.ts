@@ -1,11 +1,8 @@
 import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 
-export type SessionModelMessage = {
-  role: "user" | "assistant"
-  model?: {
-    providerID?: string
-    modelID?: string
-  }
+export type SelectedModel = {
+  providerID?: string
+  id?: string
 }
 
 export type OpenAIProvider = {
@@ -19,18 +16,11 @@ export type OpenAIModel = {
 }
 
 export function resolveOpenAIModel(
-  messages: readonly SessionModelMessage[],
+  selected: SelectedModel | undefined,
   providers: readonly OpenAIProvider[],
 ): OpenAIModel | undefined {
-  let latest: SessionModelMessage | undefined
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index]?.role === "user") {
-      latest = messages[index]
-      break
-    }
-  }
-  const providerID = latest?.model?.providerID
-  const modelID = latest?.model?.modelID
+  const providerID = selected?.providerID
+  const modelID = selected?.id
   if (providerID !== "openai" || !modelID) return undefined
   const provider = providers.find((item) => item.id === providerID)
   if (!provider || !provider.models[modelID]) return undefined
@@ -72,9 +62,8 @@ const tui: TuiPlugin = async (api) => {
             return
           }
 
-          const messages = api.state.session.messages(sessionID)
-          const latestUser = [...messages].reverse().find((message) => message.role === "user")
-          const providerID = latestUser?.model?.providerID
+          const selectedModel = api.state.session.get(sessionID)?.model
+          const providerID = selectedModel?.providerID
           if (providerID && providerID !== "openai") {
             api.ui.toast({
               message: `Compaction is only available for OpenAI models (current provider: ${providerID})`,
@@ -83,7 +72,7 @@ const tui: TuiPlugin = async (api) => {
             return
           }
 
-          const model = resolveOpenAIModel(messages, api.state.provider)
+          const model = resolveOpenAIModel(selectedModel, api.state.provider)
           if (!model) {
             api.ui.toast({ message: "No usable OpenAI model found for this session", variant: "warning" })
             return

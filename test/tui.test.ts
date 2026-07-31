@@ -2,22 +2,23 @@ import { describe, expect, test } from "vitest"
 import { resolveOpenAIModel, tui } from "../src/tui.js"
 
 describe("TUI compaction model selection", () => {
-  test("uses the latest user OpenAI model only when it is available", () => {
-    const messages = [
-      { role: "user" as const, model: { providerID: "openai", modelID: "older" } },
-      { role: "user" as const, model: { providerID: "openai", modelID: "current" } },
-    ]
-    expect(resolveOpenAIModel(messages, [{ id: "openai", models: { current: {} } }])).toEqual({
+  test("uses the selected OpenAI model only when it is available", () => {
+    const selected = { providerID: "openai", id: "current" }
+    expect(resolveOpenAIModel(selected, [{ id: "openai", models: { current: {} } }])).toEqual({
       providerID: "openai",
       modelID: "current",
     })
-    expect(resolveOpenAIModel(messages, [{ id: "anthropic", models: { current: {} } }])).toBeUndefined()
-    expect(resolveOpenAIModel(messages, [{ id: "openai", models: { older: {} } }])).toBeUndefined()
+    expect(resolveOpenAIModel(selected, [{ id: "anthropic", models: { current: {} } }])).toBeUndefined()
+    expect(resolveOpenAIModel(selected, [{ id: "openai", models: { older: {} } }])).toBeUndefined()
   })
 })
 
 describe("TUI compaction request", () => {
-  const createHarness = (summarize: () => Promise<{ data: boolean }>) => {
+  const createHarness = (
+    summarize: (input: { sessionID: string; providerID: string; modelID: string; auto: boolean }) => Promise<{ data: boolean }>,
+    selectedModel = { providerID: "openai", id: "gpt" },
+    messageModel = { providerID: "anthropic", modelID: "stale-model" },
+  ) => {
     const toasts: Array<{ message: string; variant?: string }> = []
     let command: { run: () => Promise<void> } | undefined
     let disposed = false
@@ -35,7 +36,10 @@ describe("TUI compaction request", () => {
       },
       route: { current: { name: "session", params: { sessionID: "session" } } },
       state: {
-        session: { messages: () => [{ role: "user", model: { providerID: "openai", modelID: "gpt" } }] },
+        session: {
+          get: () => ({ model: selectedModel }),
+          messages: () => [{ role: "user", model: messageModel }],
+        },
         provider: [{ id: "openai", models: { gpt: {} } }],
       },
       client: { session: { summarize } },
@@ -56,10 +60,15 @@ describe("TUI compaction request", () => {
   }
 
   test("treats a resolved true result as success without events", async () => {
-    const harness = createHarness(async () => ({ data: true }))
+    const requests: Array<{ sessionID: string; providerID: string; modelID: string; auto: boolean }> = []
+    const harness = createHarness(async (input) => {
+      requests.push(input)
+      return { data: true }
+    })
 
     await harness.command.run()
 
+    expect(requests).toEqual([{ sessionID: "session", providerID: "openai", modelID: "gpt", auto: false }])
     expect(harness.toasts.at(-1)).toEqual({ message: "Compaction successful", variant: "success" })
   })
 
@@ -105,5 +114,20 @@ describe("TUI compaction request", () => {
 
     harness.dispose()
     expect(harness.wasDisposed()).toBe(true)
+  })
+
+  test("rejects a non-OpenAI selected model even when session history contains OpenAI messages", async () => {
+    const harness = createHarness(
+      async () => ({ data: true }),
+      { providerID: "anthropic", id: "claude" },
+      { providerID: "openai", modelID: "gpt" },
+    )
+
+    await harness.command.run()
+
+    expect(harness.toasts.at(-1)).toEqual({
+      message: "Compaction is only available for OpenAI models (current provider: anthropic)",
+      variant: "warning",
+    })
   })
 })
