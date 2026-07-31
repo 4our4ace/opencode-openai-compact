@@ -1,10 +1,5 @@
 import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 
-export type SelectedModel = {
-  providerID?: string
-  id?: string
-}
-
 export type OpenAIProvider = {
   id: string
   models: Record<string, unknown>
@@ -16,15 +11,13 @@ export type OpenAIModel = {
 }
 
 export function resolveOpenAIModel(
-  selected: SelectedModel | undefined,
   providers: readonly OpenAIProvider[],
 ): OpenAIModel | undefined {
-  const providerID = selected?.providerID
-  const modelID = selected?.id
-  if (providerID !== "openai" || !modelID) return undefined
-  const provider = providers.find((item) => item.id === providerID)
-  if (!provider || !provider.models[modelID]) return undefined
-  return { providerID, modelID }
+  const provider = providers.find((item) => item.id === "openai")
+  if (!provider) return undefined
+
+  const modelID = Object.keys(provider.models)[0]
+  return modelID ? { providerID: provider.id, modelID } : undefined
 }
 
 const tui: TuiPlugin = async (api) => {
@@ -62,17 +55,7 @@ const tui: TuiPlugin = async (api) => {
             return
           }
 
-          const selectedModel = api.state.session.get(sessionID)?.model
-          const providerID = selectedModel?.providerID
-          if (providerID && providerID !== "openai") {
-            api.ui.toast({
-              message: `Compaction is only available for OpenAI models (current provider: ${providerID})`,
-              variant: "warning",
-            })
-            return
-          }
-
-          const model = resolveOpenAIModel(selectedModel, api.state.provider)
+          const model = resolveOpenAIModel(api.state.provider)
           if (!model) {
             api.ui.toast({ message: "No usable OpenAI model found for this session", variant: "warning" })
             return

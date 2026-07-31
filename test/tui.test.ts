@@ -2,21 +2,19 @@ import { describe, expect, test } from "vitest"
 import { resolveOpenAIModel, tui } from "../src/tui.js"
 
 describe("TUI compaction model selection", () => {
-  test("uses the selected OpenAI model only when it is available", () => {
-    const selected = { providerID: "openai", id: "current" }
-    expect(resolveOpenAIModel(selected, [{ id: "openai", models: { current: {} } }])).toEqual({
+  test("uses an available OpenAI model independently of session history", () => {
+    expect(resolveOpenAIModel([{ id: "openai", models: { current: {} } }])).toEqual({
       providerID: "openai",
       modelID: "current",
     })
-    expect(resolveOpenAIModel(selected, [{ id: "anthropic", models: { current: {} } }])).toBeUndefined()
-    expect(resolveOpenAIModel(selected, [{ id: "openai", models: { older: {} } }])).toBeUndefined()
+    expect(resolveOpenAIModel([{ id: "anthropic", models: { current: {} } }])).toBeUndefined()
+    expect(resolveOpenAIModel([{ id: "openai", models: {} }])).toBeUndefined()
   })
 })
 
 describe("TUI compaction request", () => {
   const createHarness = (
     summarize: (input: { sessionID: string; providerID: string; modelID: string; auto: boolean }) => Promise<{ data: boolean }>,
-    selectedModel = { providerID: "openai", id: "gpt" },
     messageModel = { providerID: "anthropic", modelID: "stale-model" },
   ) => {
     const toasts: Array<{ message: string; variant?: string }> = []
@@ -37,7 +35,6 @@ describe("TUI compaction request", () => {
       route: { current: { name: "session", params: { sessionID: "session" } } },
       state: {
         session: {
-          get: () => ({ model: selectedModel }),
           messages: () => [{ role: "user", model: messageModel }],
         },
         provider: [{ id: "openai", models: { gpt: {} } }],
@@ -116,18 +113,15 @@ describe("TUI compaction request", () => {
     expect(harness.wasDisposed()).toBe(true)
   })
 
-  test("rejects a non-OpenAI selected model even when session history contains OpenAI messages", async () => {
-    const harness = createHarness(
-      async () => ({ data: true }),
-      { providerID: "anthropic", id: "claude" },
-      { providerID: "openai", modelID: "gpt" },
-    )
+  test("uses OpenAI even when session history belongs to another provider", async () => {
+    const requests: Array<{ sessionID: string; providerID: string; modelID: string; auto: boolean }> = []
+    const harness = createHarness(async (input) => {
+      requests.push(input)
+      return { data: true }
+    })
 
     await harness.command.run()
 
-    expect(harness.toasts.at(-1)).toEqual({
-      message: "Compaction is only available for OpenAI models (current provider: anthropic)",
-      variant: "warning",
-    })
+    expect(requests).toEqual([{ sessionID: "session", providerID: "openai", modelID: "gpt", auto: false }])
   })
 })
