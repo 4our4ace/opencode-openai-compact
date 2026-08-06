@@ -1,4 +1,4 @@
-import type { Hooks } from "@opencode-ai/plugin/v1";
+import type { Hooks } from "@opencode-ai/plugin";
 export type OAuthFetchLike = typeof fetch;
 export type OpenAIAuthMethods = NonNullable<Hooks["auth"]>["methods"];
 export type OpenAIOAuthAuth = {

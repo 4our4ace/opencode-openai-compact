@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { compactBody, compactUrl, createCompactHooks, createCompactV2Runtime, fetchMiddlewareSymbol } from "../src/compact.js"
+import { compactBody, compactUrl, createCompactHooks, fetchMiddlewareSymbol } from "../src/compact.js"
 import { defaultConfig, OpenAICompactConfigSchema } from "../src/schema.js"
 import { CheckpointStore } from "../src/state.js"
 
@@ -10,68 +10,6 @@ function jsonBody(init: RequestInit | undefined) {
 const defaultCompactModel = defaultConfig.providers.openai.compactModel
 
 describe("OpenAI compact hooks", () => {
-  test("adapts V2 HTTP hooks to native compaction and checkpoint injection", async () => {
-    const store = CheckpointStore.openMemory()
-    const runtime = createCompactV2Runtime(defaultConfig, store)
-    try {
-      let compactMiddleware: any
-      runtime.register({
-        sessionID: "ses_v2",
-        agent: "compaction",
-        model: { providerID: "openai" },
-        use: (middleware) => (compactMiddleware = middleware),
-      })
-      const compactResponse = await compactMiddleware(
-        new Request("https://api.openai.com/v1/responses", {
-          method: "POST",
-          body: JSON.stringify({ model: "gpt", input: [{ role: "user", content: "history" }] }),
-        }),
-        async (request: Request) => {
-          expect(request.url).toBe("https://api.openai.com/v1/responses/compact")
-          return new Response(
-            JSON.stringify({
-              id: "resp_v2",
-              model: "gpt",
-              output: [{ type: "compaction_summary", encrypted_content: "encrypted" }],
-            }),
-            { headers: { "content-type": "application/json" } },
-          )
-        },
-      )
-      expect(compactResponse.headers.get("content-type")).toContain("text/event-stream")
-
-      let normalMiddleware: any
-      runtime.register({
-        sessionID: "ses_v2",
-        agent: "build",
-        model: { providerID: "openai" },
-        use: (middleware) => (normalMiddleware = middleware),
-      })
-      await normalMiddleware(
-        new Request("https://api.openai.com/v1/responses", {
-          method: "POST",
-          body: JSON.stringify({
-            model: "gpt",
-            input: [
-              { role: "assistant", content: [{ type: "output_text", text: defaultConfig.summary }] },
-              { role: "user", content: "continue" },
-            ],
-          }),
-        }),
-        async (request: Request) => {
-          const body = await request.json() as any
-          expect(body.input).toEqual([
-            { type: "compaction", encrypted_content: "encrypted" },
-            { role: "user", content: "continue" },
-          ])
-          return new Response("ok")
-        },
-      )
-    } finally {
-      await runtime.dispose()
-    }
-  })
-
   test("wraps the configured provider fetch", async () => {
     const store = CheckpointStore.openMemory()
     try {

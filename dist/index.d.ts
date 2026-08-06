@@ -1,10 +1,8 @@
-import type { Plugin } from "@opencode-ai/plugin/v1";
-import { setup } from "./v2.js";
+import type { Plugin } from "@opencode-ai/plugin";
 export declare const server: Plugin;
 declare const _default: {
     id: string;
     server: Plugin;
-    setup: typeof setup;
 };
 export default _default;
 export { createCompactHooks, fetchMiddlewareSymbol } from "./compact.js";

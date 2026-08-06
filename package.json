@@ -1,6 +1,6 @@
 {
   "name": "@4our4ace/opencode-openai-compact",
-  "version": "1.3.0",
+  "version": "1.2.0",
   "description": "OpenCode plugin that stores OpenAI Responses API compaction checkpoints in SQLite.",
   "type": "module",
   "packageManager": "pnpm@11.6.0",
@@ -14,22 +14,18 @@
     "./tui": {
       "types": "./dist/tui.d.ts",
       "import": "./dist/tui.js"
-    },
-    "./v2": "./src/v2.ts",
-    "./v2-tui": "./src/v2-tui.tsx"
+    }
   },
   "files": [
     "dist",
-    "src/v2-tui.tsx",
-    "src/v2.ts",
     "README.md",
     "configSchema.json",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && tsc -p tsconfig.v2.json",
+    "build": "tsc -p tsconfig.json",
     "prepack": "pnpm run build",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.v2.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "keywords": [
@@ -54,16 +50,14 @@
   },
   "engines": {
     "node": ">=22.12.0",
-    "opencode": ">=1.18.4"
+    "opencode": ">=1.18.4 <2"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "0.0.0-next-16909",
-    "@opentui/solid": "0.4.5",
     "jsonc-parser": "3.3.1",
-    "solid-js": "1.9.12",
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@opencode-ai/plugin": "1.18.4",
     "@types/node": "26.1.0",
     "@opentui/core": "0.4.5",
     "@opentui/keymap": "0.4.5",

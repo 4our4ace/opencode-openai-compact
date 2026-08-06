@@ -1,4 +1,4 @@
-import type { TuiPlugin } from "@opencode-ai/plugin/v1/tui"
+import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 
 const tui: TuiPlugin = async (api) => {
   const inFlight = new Set<string>()

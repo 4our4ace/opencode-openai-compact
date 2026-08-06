@@ -10,9 +10,7 @@ OpenCode can compact long coding sessions. When you are using OpenAI Responses m
 
 ## Standalone install
 
-Install compact by itself with one command. This clones the plugin, installs
-production dependencies, and configures its server plugin plus native OpenCode
-V1 and V2 server and TUI entrypoints:
+Install compact by itself with one command. This clones the plugin, installs production dependencies, and configures both its server and TUI plugins:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/4our4ace/opencode-openai-compact/main/install.sh | bash
@@ -45,13 +43,15 @@ The important part is simple: `/responses/compact` returns compacted output that
 
 ## Native `/compact` behavior
 
-The package exports its V1 TUI plugin at
-`@4our4ace/opencode-openai-compact/tui` and its V2 TUI plugin at
-`@4our4ace/opencode-openai-compact/v2-tui`. Both provide `/compact`,
-`/summarize`, and a **Compact session** command-palette entry. The V1 handler
-uses the legacy session summarize API; the V2 handler uses the V2 session
-compact API. OpenAI requests are handled by native compaction; other providers
-use OpenCode's normal prompt-summary compaction.
+The package also exports a TUI plugin at
+`@4our4ace/opencode-openai-compact/tui`. When installed as a TUI plugin, the
+normal `/compact`, `/summarize`, command palette entry, and `Ctrl+X,C` controls
+retain the normal `session.compact` spelling and model selection. The fork-owned
+handler calls OpenCode's legacy session summarize API with the session's last
+submitted model, then reports `Compaction started`, success, or failure after
+that request settles. OpenAI requests are handled by native compaction; other
+providers use OpenCode's normal prompt-summary compaction. Only one compaction
+request is allowed per session at a time.
 
 ## When To Use It
 
@@ -84,7 +84,7 @@ Requirements:
 | Runtime | Version |
 | --- | --- |
 | Node.js | `>=22.12.0` |
-| OpenCode | `>=1.18.4` |
+| OpenCode | `>=1.18.4 <2` |
 
 ## Configuration Files
 

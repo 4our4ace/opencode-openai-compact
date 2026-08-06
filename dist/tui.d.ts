@@ -1,4 +1,4 @@
-import type { TuiPlugin } from "@opencode-ai/plugin/v1/tui";
+import type { TuiPlugin } from "@opencode-ai/plugin/tui";
 declare const tui: TuiPlugin;
 export { tui };
 declare const _default: {

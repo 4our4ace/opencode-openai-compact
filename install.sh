@@ -6,7 +6,7 @@ usage() {
 Usage: ./install.sh [--help]
 
 Clones or updates the OpenAI compact plugin, installs production dependencies,
-and configures its server plugin plus native OpenCode V1 and V2 TUI plugins.
+and adds its server and TUI plugins to the global OpenCode configuration.
 EOF
 }
 
@@ -24,7 +24,6 @@ readonly OPENCODE_DIR="${OPENCODE_CONFIG_DIR:-$CONFIG_HOME/opencode}"
 readonly PLUGIN_DIR="$OPENCODE_DIR/plugins/opencode-openai-compact"
 readonly CONFIG_FILE="$OPENCODE_DIR/opencode.json"
 readonly TUI_CONFIG_FILE="${OPENCODE_TUI_CONFIG:-$OPENCODE_DIR/tui.json}"
-readonly CLI_CONFIG_FILE="${OPENCODE_CLI_CONFIG:-$OPENCODE_DIR/cli.json}"
 readonly REPO="https://github.com/4our4ace/opencode-openai-compact.git"
 
 command -v git >/dev/null || { printf 'Error: git is required.\n' >&2; exit 1; }
@@ -57,7 +56,7 @@ else
   exit 1
 fi
 
-OPENCODE_CONFIG_FILE="$CONFIG_FILE" OPENCODE_TUI_CONFIG_FILE="$TUI_CONFIG_FILE" OPENCODE_CLI_CONFIG_FILE="$CLI_CONFIG_FILE" OPENCODE_PLUGIN_DIR="$PLUGIN_DIR" python3 - <<'PY'
+OPENCODE_CONFIG_FILE="$CONFIG_FILE" OPENCODE_TUI_CONFIG_FILE="$TUI_CONFIG_FILE" OPENCODE_PLUGIN_DIR="$PLUGIN_DIR" python3 - <<'PY'
 import json
 import os
 import shutil
@@ -66,13 +65,11 @@ from datetime import datetime, timezone
 
 config_file = os.environ["OPENCODE_CONFIG_FILE"]
 tui_config_file = os.environ["OPENCODE_TUI_CONFIG_FILE"]
-cli_config_file = os.environ["OPENCODE_CLI_CONFIG_FILE"]
 plugin_dir = os.environ["OPENCODE_PLUGIN_DIR"]
-server = f"file://{plugin_dir}/dist/index.js"
+server = f"file://{plugin_dir}"
 tui = f"file://{plugin_dir}/dist/tui.js"
-v2_tui = f"file://{plugin_dir}/src/v2-tui.tsx"
 
-def update(path, field, entries):
+def update(path, entries):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     if os.path.exists(path):
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -85,10 +82,10 @@ def update(path, field, entries):
         config = {}
     if not isinstance(config, dict):
         raise SystemExit(f"Error: {path} must contain a JSON object")
-    plugins = config.get(field, [])
+    plugins = config.get("plugin", [])
     if not isinstance(plugins, list):
-        raise SystemExit(f"Error: {path} has a non-array {field} field")
-    config[field] = [entry for entry in plugins if entry not in entries] + entries
+        raise SystemExit(f"Error: {path} has a non-array plugin field")
+    config["plugin"] = [entry for entry in plugins if entry not in entries] + entries
     directory = os.path.dirname(path)
     fd, temporary = tempfile.mkstemp(prefix=f".{os.path.basename(path)}.", dir=directory)
     try:
@@ -101,7 +98,6 @@ def update(path, field, entries):
             os.unlink(temporary)
     print(f"Updated {path}" + (f" (backup: {backup})" if backup else ""))
 
-update(config_file, "plugin", [server])
-update(tui_config_file, "plugin", [tui])
-update(cli_config_file, "plugins", [v2_tui])
+update(config_file, [server])
+update(tui_config_file, [tui])
 PY
