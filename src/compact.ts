@@ -132,16 +132,9 @@ function fetchInitForReroute(input: RequestInfo | URL, init: RequestInit | undef
   return requestInit
 }
 
-function compactMarkers(headers: Headers, config: OpenAICompactConfig, body?: AnyRecord) {
-  const sessionID = headers.get(config.headers.session) ?? headers.get("x-session-id") ?? undefined
-  const input = body?.input
-  const shouldCompact =
-    headers.get(config.headers.compact) === "1" ||
-    (Array.isArray(input) &&
-      input.some((item) => {
-        const record = asRecord(item)
-        return record?.role === "user" && isOpenCodeCompactionUserPrompt(record.content)
-      }))
+function compactMarkers(headers: Headers, config: OpenAICompactConfig) {
+  const sessionID = headers.get(config.headers.session) ?? undefined
+  const shouldCompact = headers.get(config.headers.compact) === "1"
   headers.delete(config.headers.compact)
   headers.delete(config.headers.session)
   return { sessionID, shouldCompact }
@@ -626,8 +619,7 @@ export function createCompactHooks(
     const wrapped = (async (requestInput: RequestInfo | URL, init?: RequestInit) => {
       const url = urlOf(requestInput)
       const headers = requestHeaders(requestInput, init)
-      const requestBody = parseJsonRecord(await bodyText(requestInput, init))
-      const { sessionID: headerSessionID, shouldCompact } = compactMarkers(headers, config, requestBody)
+      const { sessionID: headerSessionID, shouldCompact } = compactMarkers(headers, config)
       const isResponsesRequest = url ? isResponsesUrl(url, config) : false
       const outboundHeaders = cleanedHeaders(headers, config)
 
@@ -850,23 +842,19 @@ export function createCompactV2Runtime(config: OpenAICompactConfig, store: Check
   })
 
   return {
-    wrap(providerID: string, baseFetch: FetchLike) {
-      const draft: AnyRecord = {
-        provider: {
-          [providerID]: { options: { fetch: baseFetch } },
-        },
-      }
-      // The V1 config hook is synchronous despite its Promise-shaped API. Reuse
-      // it so V1 and V2 share checkpoint, OAuth, and fetch-composition logic.
-      void hooks.config?.(draft as never)
-      const provider = asRecord(asRecord(draft.provider)?.[providerID])
-      return (asRecord(provider?.options)?.fetch as FetchLike | undefined) ?? baseFetch
-    },
     register(input: V2HttpHook) {
       if (!(input.model.providerID in config.providers)) return
       input.use(async (request, next) => {
         const baseFetch: FetchLike = (resource, init) => next(new Request(resource, init))
-        const wrapped = this.wrap(input.model.providerID, baseFetch)
+        const draft: AnyRecord = { provider: {} }
+        for (const providerID of Object.keys(config.providers)) {
+          ;(draft.provider as AnyRecord)[providerID] = { options: { fetch: baseFetch } }
+        }
+        await hooks.config?.(draft as never)
+        const provider = asRecord((draft.provider as AnyRecord)[input.model.providerID])
+        const providerOptions = asRecord(provider?.options)
+        const wrapped = providerOptions?.fetch as FetchLike | undefined
+        if (!wrapped) return next(request)
 
         const headers = new Headers(request.headers)
         headers.set(config.headers.session, input.sessionID)
