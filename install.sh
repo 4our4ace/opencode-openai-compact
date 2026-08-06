@@ -6,7 +6,7 @@ usage() {
 Usage: ./install.sh [--help]
 
 Clones or updates the OpenAI compact plugin, installs production dependencies,
-and configures its server plugin plus native OpenCode V1 and V2 TUI plugins.
+and configures its server plugin plus the OpenCode V1 TUI plugin.
 EOF
 }
 
@@ -70,7 +70,10 @@ cli_config_file = os.environ["OPENCODE_CLI_CONFIG_FILE"]
 plugin_dir = os.environ["OPENCODE_PLUGIN_DIR"]
 server = f"file://{plugin_dir}/dist/index.js"
 tui = f"file://{plugin_dir}/dist/tui.js"
-v2_tui = f"file://{plugin_dir}/src/v2-tui.tsx"
+obsolete_v2_tui = {
+    f"file://{plugin_dir}/src/v2-tui.tsx",
+    f"file://{plugin_dir}/dist/v2-tui.js",
+}
 
 def update(path, field, entries):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -101,7 +104,38 @@ def update(path, field, entries):
             os.unlink(temporary)
     print(f"Updated {path}" + (f" (backup: {backup})" if backup else ""))
 
+def remove(path, field, entries):
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8") as source:
+        config = json.load(source)
+    if not isinstance(config, dict):
+        raise SystemExit(f"Error: {path} must contain a JSON object")
+    plugins = config.get(field, [])
+    if not isinstance(plugins, list):
+        raise SystemExit(f"Error: {path} has a non-array {field} field")
+    filtered = [entry for entry in plugins if entry not in entries]
+    if filtered == plugins:
+        return
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup = f"{path}.bak-{stamp}"
+    shutil.copy2(path, backup)
+    config[field] = filtered
+    directory = os.path.dirname(path)
+    fd, temporary = tempfile.mkstemp(prefix=f".{os.path.basename(path)}.", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as target:
+            json.dump(config, target, indent=2)
+            target.write("\n")
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    print(f"Updated {path} (backup: {backup})")
+
 update(config_file, "plugin", [server])
 update(tui_config_file, "plugin", [tui])
-update(cli_config_file, "plugins", [v2_tui])
+remove(cli_config_file, "plugins", obsolete_v2_tui)
+# OpenCode V2 already owns /compact and /summarize. Remove the old TUI
+# override so both manual and automatic compaction flow through its server.
 PY

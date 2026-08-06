@@ -11,8 +11,8 @@ OpenCode can compact long coding sessions. When you are using OpenAI Responses m
 ## Standalone install
 
 Install compact by itself with one command. This clones the plugin, installs
-production dependencies, and configures its server plugin plus native OpenCode
-V1 and V2 server and TUI entrypoints:
+production dependencies, and configures its server plugin plus the OpenCode V1
+TUI entrypoint. OpenCode V2 uses its built-in compaction commands.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/4our4ace/opencode-openai-compact/main/install.sh | bash
@@ -45,13 +45,12 @@ The important part is simple: `/responses/compact` returns compacted output that
 
 ## Native `/compact` behavior
 
-The package exports its V1 TUI plugin at
-`@4our4ace/opencode-openai-compact/tui` and its V2 TUI plugin at
-`@4our4ace/opencode-openai-compact/v2-tui`. Both provide `/compact`,
-`/summarize`, and a **Compact session** command-palette entry. The V1 handler
-uses the legacy session summarize API; the V2 handler uses the V2 session
-compact API. OpenAI requests are handled by native compaction; other providers
-use OpenCode's normal prompt-summary compaction.
+The package exports a V1 TUI plugin at
+`@4our4ace/opencode-openai-compact/tui`. In OpenCode V2, use the built-in
+`/compact`, `/summarize`, or automatic compaction. The plugin's V2 server hook
+recognizes OpenCode's compaction requests and routes configured OpenAI providers
+through native compaction; it does not replace OpenCode's commands. Other
+providers use OpenCode's normal prompt-summary compaction.
 
 ## When To Use It
 
