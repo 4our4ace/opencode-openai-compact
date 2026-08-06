@@ -1,4 +1,4 @@
-import type { Hooks } from "@opencode-ai/plugin"
+import type { Hooks } from "@opencode-ai/plugin/v1"
 import { defaultConfig, type OpenAICompactConfig } from "./schema.js"
 import { CheckpointStore, type AnyRecord, type Checkpoint } from "./state.js"
 import {
@@ -31,6 +31,16 @@ export type FetchMiddlewareProtocol = {
 type CompactHookOptions = {
   setOpenAIAuth?: (auth: OpenAIOAuthAuth) => Promise<void>
   tokenFetch?: OAuthFetchLike
+  authenticatedRequests?: boolean
+  forceFetchWrap?: boolean
+  stripSyntheticSummary?: boolean
+}
+
+type V2HttpHook = {
+  sessionID: string
+  agent: string
+  model: { providerID: string }
+  use: (middleware: (request: Request, next: (request: Request) => Promise<Response>) => Promise<Response>) => void
 }
 
 const wrappedFetch = "__opencodeOpenAICompactFetch"
@@ -418,7 +428,7 @@ export function createCompactHooks(
   const stableInstructionsByProvider = new Map<string, Map<string, StableInstructions>>()
   const pendingSystemByProvider = new Map<string, Map<string, string>>()
   const providerByMessage = new Map<string, string>()
-  const multiAuthActive = Boolean((globalThis as Record<PropertyKey, unknown>)[multiAuthActiveSymbol])
+  const multiAuthActive = !options.forceFetchWrap && Boolean((globalThis as Record<PropertyKey, unknown>)[multiAuthActiveSymbol])
   let getOpenAIAuth: (() => Promise<OpenAIOAuthAuth | undefined>) | undefined
   const openAIOAuth = createOpenAIOAuth({
     getAuth: async () => getOpenAIAuth?.(),
@@ -584,12 +594,19 @@ export function createCompactHooks(
 
     headers.set("content-type", "application/json")
     const instructionCount = leadingInstructionCount(body.input)
+    const input = options.stripSyntheticSummary
+      ? body.input.filter((item) => {
+          const record = asRecord(item)
+          const text = typeof record?.text === "string" ? record.text : contentText(record?.content)
+          return text.trim() !== config.summary.trim()
+        })
+      : body.input
     const next = {
       ...body,
       input: [
-        ...body.input.slice(0, instructionCount),
+        ...input.slice(0, instructionCount),
         ...structuredClone(checkpoint.items),
-        ...body.input.slice(instructionCount),
+        ...input.slice(instructionCount),
       ],
     }
     return { ...fetchInitForReroute(requestInput, init, headers), body: JSON.stringify(next) }
@@ -618,7 +635,7 @@ export function createCompactHooks(
       const requestInit = sessionID
         ? await initWithCompactedInput(providerID, requestInput, init, outboundHeaders, sessionID)
         : fetchInitForReroute(requestInput, init, outboundHeaders)
-      const oauthRequest = !multiAuthActive && providerID === "openai" && usesOpenAIOAuth(providerID, headers)
+      const oauthRequest = !options.authenticatedRequests && !multiAuthActive && providerID === "openai" && usesOpenAIOAuth(providerID, headers)
       const oauthRequestInit = oauthRequest ? await openAIOAuth.requestInit(requestInit) : undefined
       const routedRequestInput = oauthRequest
         ? shouldCompact
@@ -815,4 +832,37 @@ export function createCompactHooks(
   }
 
   return hooks
+}
+
+export function createCompactV2Runtime(config: OpenAICompactConfig, store: CheckpointStore) {
+  const hooks = createCompactHooks(config, store, fetch, {
+    authenticatedRequests: true,
+    forceFetchWrap: true,
+    stripSyntheticSummary: true,
+  })
+
+  return {
+    register(input: V2HttpHook) {
+      if (!(input.model.providerID in config.providers)) return
+      input.use(async (request, next) => {
+        const baseFetch: FetchLike = (resource, init) => next(new Request(resource, init))
+        const draft: AnyRecord = { provider: {} }
+        for (const providerID of Object.keys(config.providers)) {
+          ;(draft.provider as AnyRecord)[providerID] = { options: { fetch: baseFetch } }
+        }
+        await hooks.config?.(draft as never)
+        const provider = asRecord((draft.provider as AnyRecord)[input.model.providerID])
+        const providerOptions = asRecord(provider?.options)
+        const wrapped = providerOptions?.fetch as FetchLike | undefined
+        if (!wrapped) return next(request)
+
+        const headers = new Headers(request.headers)
+        headers.set(config.headers.session, input.sessionID)
+        if (input.agent === "compaction") headers.set(config.headers.compact, "1")
+        const body = request.method === "GET" || request.method === "HEAD" ? undefined : await request.clone().text()
+        return wrapped(request.url, { method: request.method, headers, body, signal: request.signal })
+      })
+    },
+    dispose: () => hooks.dispose?.(),
+  }
 }

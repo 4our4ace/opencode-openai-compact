@@ -1,4 +1,4 @@
-import type { Hooks } from "@opencode-ai/plugin"
+import type { Hooks } from "@opencode-ai/plugin/v1"
 import { createServer } from "node:http"
 import { setTimeout as sleep } from "node:timers/promises"
 

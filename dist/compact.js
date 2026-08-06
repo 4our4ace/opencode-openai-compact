@@ -351,7 +351,7 @@ export function createCompactHooks(config, store, baseFetch = fetch, options = {
     const stableInstructionsByProvider = new Map();
     const pendingSystemByProvider = new Map();
     const providerByMessage = new Map();
-    const multiAuthActive = Boolean(globalThis[multiAuthActiveSymbol]);
+    const multiAuthActive = !options.forceFetchWrap && Boolean(globalThis[multiAuthActiveSymbol]);
     let getOpenAIAuth;
     const openAIOAuth = createOpenAIOAuth({
         getAuth: async () => getOpenAIAuth?.(),
@@ -501,12 +501,19 @@ export function createCompactHooks(config, store, baseFetch = fetch, options = {
             return fetchInitForReroute(requestInput, init, headers);
         headers.set("content-type", "application/json");
         const instructionCount = leadingInstructionCount(body.input);
+        const input = options.stripSyntheticSummary
+            ? body.input.filter((item) => {
+                const record = asRecord(item);
+                const text = typeof record?.text === "string" ? record.text : contentText(record?.content);
+                return text.trim() !== config.summary.trim();
+            })
+            : body.input;
         const next = {
             ...body,
             input: [
-                ...body.input.slice(0, instructionCount),
+                ...input.slice(0, instructionCount),
                 ...structuredClone(checkpoint.items),
-                ...body.input.slice(instructionCount),
+                ...input.slice(instructionCount),
             ],
         };
         return { ...fetchInitForReroute(requestInput, init, headers), body: JSON.stringify(next) };
@@ -530,7 +537,7 @@ export function createCompactHooks(config, store, baseFetch = fetch, options = {
             const requestInit = sessionID
                 ? await initWithCompactedInput(providerID, requestInput, init, outboundHeaders, sessionID)
                 : fetchInitForReroute(requestInput, init, outboundHeaders);
-            const oauthRequest = !multiAuthActive && providerID === "openai" && usesOpenAIOAuth(providerID, headers);
+            const oauthRequest = !options.authenticatedRequests && !multiAuthActive && providerID === "openai" && usesOpenAIOAuth(providerID, headers);
             const oauthRequestInit = oauthRequest ? await openAIOAuth.requestInit(requestInit) : undefined;
             const routedRequestInput = oauthRequest
                 ? shouldCompact
@@ -710,4 +717,38 @@ export function createCompactHooks(config, store, baseFetch = fetch, options = {
         };
     }
     return hooks;
+}
+export function createCompactV2Runtime(config, store) {
+    const hooks = createCompactHooks(config, store, fetch, {
+        authenticatedRequests: true,
+        forceFetchWrap: true,
+        stripSyntheticSummary: true,
+    });
+    return {
+        register(input) {
+            if (!(input.model.providerID in config.providers))
+                return;
+            input.use(async (request, next) => {
+                const baseFetch = (resource, init) => next(new Request(resource, init));
+                const draft = { provider: {} };
+                for (const providerID of Object.keys(config.providers)) {
+                    ;
+                    draft.provider[providerID] = { options: { fetch: baseFetch } };
+                }
+                await hooks.config?.(draft);
+                const provider = asRecord(draft.provider[input.model.providerID]);
+                const providerOptions = asRecord(provider?.options);
+                const wrapped = providerOptions?.fetch;
+                if (!wrapped)
+                    return next(request);
+                const headers = new Headers(request.headers);
+                headers.set(config.headers.session, input.sessionID);
+                if (input.agent === "compaction")
+                    headers.set(config.headers.compact, "1");
+                const body = request.method === "GET" || request.method === "HEAD" ? undefined : await request.clone().text();
+                return wrapped(request.url, { method: request.method, headers, body, signal: request.signal });
+            });
+        },
+        dispose: () => hooks.dispose?.(),
+    };
 }

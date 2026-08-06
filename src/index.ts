@@ -1,8 +1,9 @@
-import type { Plugin } from "@opencode-ai/plugin"
+import type { Plugin } from "@opencode-ai/plugin/v1"
 import { loadConfig } from "./config.js"
 import { createCompactHooks } from "./compact.js"
 import { getDatabasePath } from "./paths.js"
 import { CheckpointStore } from "./state.js"
+import { setup } from "./v2.js"
 
 export const server: Plugin = async ({ client, directory, worktree }) => {
   const config = await loadConfig({ directory, worktree })
@@ -21,6 +22,7 @@ export const server: Plugin = async ({ client, directory, worktree }) => {
 export default {
   id: "4our4ace-opencode-openai-compact",
   server,
+  setup,
 }
 
 export { createCompactHooks, fetchMiddlewareSymbol } from "./compact.js"
