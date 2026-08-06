@@ -32,6 +32,7 @@ export declare function compactBody(body: AnyRecord, compactModel?: string, conf
 export declare function compactedItemsFrom(value: unknown): AnyRecord[] | undefined;
 export declare function createCompactHooks(config: OpenAICompactConfig, store: CheckpointStore, baseFetch?: FetchLike, options?: CompactHookOptions): Hooks;
 export declare function createCompactV2Runtime(config: OpenAICompactConfig, store: CheckpointStore): {
+    wrap(providerID: string, baseFetch: FetchLike): typeof fetch;
     register(input: V2HttpHook): void;
     dispose: () => Promise<void> | undefined;
 };

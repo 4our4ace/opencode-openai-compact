@@ -10,6 +10,38 @@ function jsonBody(init: RequestInit | undefined) {
 const defaultCompactModel = defaultConfig.providers.openai.compactModel
 
 describe("OpenAI compact hooks", () => {
+  test("detects V2's built-in compaction prompt through the provider fetch wrapper", async () => {
+    const store = CheckpointStore.openMemory()
+    const runtime = createCompactV2Runtime(defaultConfig, store)
+    try {
+      const wrapped = runtime.wrap(
+        "openai",
+        (async (request: RequestInfo | URL) => {
+          expect(String(request)).toBe("https://api.openai.com/v1/responses/compact")
+          return new Response(
+            JSON.stringify({
+              id: "resp_v2_prompt",
+              model: "gpt",
+              output: [{ type: "compaction", encrypted_content: "encrypted" }],
+            }),
+            { headers: { "content-type": "application/json" } },
+          )
+        }) as typeof fetch,
+      )
+      const response = await wrapped("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: { "x-session-id": "ses_v2_prompt" },
+        body: JSON.stringify({
+          model: "gpt",
+          input: [{ role: "user", content: "Create a new anchored summary from the conversation history." }],
+        }),
+      })
+      expect(response.headers.get("content-type")).toContain("text/event-stream")
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
   test("adapts V2 HTTP hooks to native compaction and checkpoint injection", async () => {
     const store = CheckpointStore.openMemory()
     const runtime = createCompactV2Runtime(defaultConfig, store)

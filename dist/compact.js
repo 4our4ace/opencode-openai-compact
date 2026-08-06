@@ -80,9 +80,15 @@ function fetchInitForReroute(input, init, headers) {
         requestInit.duplex = duplex;
     return requestInit;
 }
-function compactMarkers(headers, config) {
-    const sessionID = headers.get(config.headers.session) ?? undefined;
-    const shouldCompact = headers.get(config.headers.compact) === "1";
+function compactMarkers(headers, config, body) {
+    const sessionID = headers.get(config.headers.session) ?? headers.get("x-session-id") ?? undefined;
+    const input = body?.input;
+    const shouldCompact = headers.get(config.headers.compact) === "1" ||
+        (Array.isArray(input) &&
+            input.some((item) => {
+                const record = asRecord(item);
+                return record?.role === "user" && isOpenCodeCompactionUserPrompt(record.content);
+            }));
     headers.delete(config.headers.compact);
     headers.delete(config.headers.session);
     return { sessionID, shouldCompact };
@@ -524,7 +530,8 @@ export function createCompactHooks(config, store, baseFetch = fetch, options = {
         const wrapped = (async (requestInput, init) => {
             const url = urlOf(requestInput);
             const headers = requestHeaders(requestInput, init);
-            const { sessionID: headerSessionID, shouldCompact } = compactMarkers(headers, config);
+            const requestBody = parseJsonRecord(await bodyText(requestInput, init));
+            const { sessionID: headerSessionID, shouldCompact } = compactMarkers(headers, config, requestBody);
             const isResponsesRequest = url ? isResponsesUrl(url, config) : false;
             const outboundHeaders = cleanedHeaders(headers, config);
             if (!isResponsesRequest) {
@@ -725,22 +732,24 @@ export function createCompactV2Runtime(config, store) {
         stripSyntheticSummary: true,
     });
     return {
+        wrap(providerID, baseFetch) {
+            const draft = {
+                provider: {
+                    [providerID]: { options: { fetch: baseFetch } },
+                },
+            };
+            // The V1 config hook is synchronous despite its Promise-shaped API. Reuse
+            // it so V1 and V2 share checkpoint, OAuth, and fetch-composition logic.
+            void hooks.config?.(draft);
+            const provider = asRecord(asRecord(draft.provider)?.[providerID]);
+            return asRecord(provider?.options)?.fetch ?? baseFetch;
+        },
         register(input) {
             if (!(input.model.providerID in config.providers))
                 return;
             input.use(async (request, next) => {
                 const baseFetch = (resource, init) => next(new Request(resource, init));
-                const draft = { provider: {} };
-                for (const providerID of Object.keys(config.providers)) {
-                    ;
-                    draft.provider[providerID] = { options: { fetch: baseFetch } };
-                }
-                await hooks.config?.(draft);
-                const provider = asRecord(draft.provider[input.model.providerID]);
-                const providerOptions = asRecord(provider?.options);
-                const wrapped = providerOptions?.fetch;
-                if (!wrapped)
-                    return next(request);
+                const wrapped = this.wrap(input.model.providerID, baseFetch);
                 const headers = new Headers(request.headers);
                 headers.set(config.headers.session, input.sessionID);
                 if (input.agent === "compaction")
